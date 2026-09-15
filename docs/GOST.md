@@ -92,7 +92,6 @@ probe_ssl_earliest_cert_expiry ...
 | `third_party/go-openssl` | vendored go-openssl с поддержкой статической линковки и регистрации gost-engine |
 | `third_party/prometheus-common` | vendored prometheus/common с опцией пользовательского `DialTLSContext` |
 | `scripts/build-gost-linux.sh` | независимая от пакетного менеджера Linux-сборка ГОСТ-бинарника |
-| `build-almalinux9.sh` | тонкая обёртка: устанавливает зависимости через DNF и вызывает общий скрипт |
 | `.github/workflows/ci-fork.yml` | CI стандартной и ГОСТ-сборки |
 | `.github/workflows/release-fork.yml` | мультиплатформенные стандартные релизы и Linux ГОСТ-релизы |
 | `.github/workflows/upstream-sync.yml` | проверка новых стабильных тегов upstream и создание update PR |
@@ -114,13 +113,6 @@ probe_ssl_earliest_cert_expiry ...
 - несколько гигабайт свободного места;
 - рекомендуется не менее 4 CPU.
 
-На AlmaLinux/RHEL обёртка `build-almalinux9.sh` сама устанавливает:
-
-```text
-gcc gcc-c++ git make cmake perl-core pkgconf-pkg-config
-ca-certificates curl tar gzip python3
-```
-
 CryptoPro CSP, лицензия CryptoPro и регистрация на сторонних сервисах не требуются.
 
 ## Сборка
@@ -130,13 +122,6 @@ CryptoPro CSP, лицензия CryptoPro и регистрация на сто�
 ```bash
 chmod +x ./scripts/build-gost-linux.sh
 JOBS="$(nproc)" make build-gost
-```
-
-На AlmaLinux/RHEL 9 можно воспользоваться обёрткой, устанавливающей RPM-зависимости:
-
-```bash
-chmod +x ./build-almalinux9.sh
-JOBS="$(nproc)" ./build-almalinux9.sh
 ```
 
 Скрипт выполняет следующие действия:
