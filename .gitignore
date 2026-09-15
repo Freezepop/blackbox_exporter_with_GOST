@@ -32,3 +32,4 @@ dependencies-stamp
 /dist
 /release
 /blackbox_exporter-msspi
+/.idea/
