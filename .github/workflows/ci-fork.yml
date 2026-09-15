@@ -1,0 +1,41 @@
+name: Fork CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  standard:
+    name: Standard Go build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
+        with:
+          go-version: 1.26.x
+      - run: go test ./...
+      - run: CGO_ENABLED=0 go build -trimpath -o blackbox_exporter .
+      - run: ./blackbox_exporter --version
+
+  gost:
+    name: GOST Linux build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake perl pkg-config curl git python3 file
+      - name: Build and test
+        run: JOBS="$(nproc)" ./scripts/build-gost-linux.sh
+      - name: Verify checksum
+        run: cd dist && sha256sum -c blackbox_exporter-gost.sha256

@@ -1,0 +1,175 @@
+name: Fork release
+
+on:
+  push:
+    tags:
+      - "v*-gost.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version written into binaries
+        required: true
+        default: 0.28.0-gost-auto
+
+permissions:
+  contents: write
+
+jobs:
+  standard:
+    name: Standard ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: "386" }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: linux, goarch: arm, goarm: "5" }
+          - { goos: linux, goarch: arm, goarm: "6" }
+          - { goos: linux, goarch: arm, goarm: "7" }
+          - { goos: linux, goarch: mips, gomips: softfloat }
+          - { goos: linux, goarch: mipsle, gomips: softfloat }
+          - { goos: linux, goarch: mips64 }
+          - { goos: linux, goarch: mips64le }
+          - { goos: linux, goarch: ppc64 }
+          - { goos: linux, goarch: ppc64le }
+          - { goos: linux, goarch: riscv64 }
+          - { goos: linux, goarch: s390x }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: dragonfly, goarch: amd64 }
+          - { goos: windows, goarch: "386" }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+          - { goos: freebsd, goarch: "386" }
+          - { goos: freebsd, goarch: amd64 }
+          - { goos: freebsd, goarch: arm64 }
+          - { goos: netbsd, goarch: "386" }
+          - { goos: netbsd, goarch: amd64 }
+          - { goos: netbsd, goarch: arm64 }
+          - { goos: openbsd, goarch: "386" }
+          - { goos: openbsd, goarch: amd64 }
+          - { goos: openbsd, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
+        with:
+          go-version: 1.26.x
+      - name: Select version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "value=${{ inputs.version }}" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Build archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          GOMIPS: ${{ matrix.gomips }}
+          VERSION: ${{ steps.version.outputs.value }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision=$(git rev-parse HEAD)
+          branch="${GITHUB_REF_NAME}"
+          build_date=$(date -u +%Y%m%d-%H:%M:%S)
+          name="blackbox_exporter-${VERSION}.${GOOS}-${GOARCH}"
+          if [[ -n "${GOARM:-}" ]]; then name="${name}v${GOARM}"; fi
+          mkdir -p "release/${name}"
+          suffix=""
+          if [[ "${GOOS}" == windows ]]; then suffix=".exe"; fi
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w \
+              -X github.com/prometheus/common/version.Version=${VERSION} \
+              -X github.com/prometheus/common/version.Revision=${revision} \
+              -X github.com/prometheus/common/version.Branch=${branch} \
+              -X github.com/prometheus/common/version.BuildUser=github-actions@github.com \
+              -X github.com/prometheus/common/version.BuildDate=${build_date}" \
+            -o "release/${name}/blackbox_exporter${suffix}" .
+          cp blackbox.yml LICENSE NOTICE "release/${name}/"
+          if [[ "${GOOS}" == windows ]]; then
+            (cd release && zip -qr "${name}.zip" "${name}")
+          else
+            tar -C release -czf "release/${name}.tar.gz" "${name}"
+          fi
+          (cd release && sha256sum "${name}".*) > "release/${name}.sha256"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: standard-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm || matrix.gomips || 'default' }}
+          path: |
+            release/*.tar.gz
+            release/*.zip
+            release/*.sha256
+          if-no-files-found: error
+
+  gost:
+    name: GOST ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake perl pkg-config curl git python3 file
+      - name: Select version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "value=${{ inputs.version }}" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Build archive
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          JOBS: "4"
+        run: |
+          ./scripts/build-gost-linux.sh
+          name="blackbox_exporter-${VERSION}.linux-${{ matrix.arch }}-gost"
+          mkdir -p "release/${name}"
+          cp dist/blackbox_exporter-gost "release/${name}/blackbox_exporter"
+          cp blackbox.yml LICENSE NOTICE "release/${name}/"
+          tar -C release -czf "release/${name}.tar.gz" "${name}"
+          (cd release && sha256sum "${name}.tar.gz") > "release/${name}.sha256"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gost-linux-${{ matrix.arch }}
+          path: |
+            release/*.tar.gz
+            release/*.sha256
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [standard, gost]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: release
+          merge-multiple: true
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            release/*

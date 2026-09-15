@@ -1,0 +1,96 @@
+name: Go Test GOST
+
+on: [push, pull_request]
+
+jobs:
+  gost:
+    runs-on: ubuntu-latest
+    name: GOST static (go 1.25.x)
+    env:
+      OPENSSL_VERSION: openssl-3.4.1
+      GOST_ENGINE_VERSION: v3.0.3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.x
+
+      - name: Go information
+        run: |
+          go version
+          go env
+
+      - name: Cache OpenSSL static
+        id: cache-openssl
+        uses: actions/cache@v4
+        with:
+          path: /tmp/openssl-install
+          key: openssl-${{ env.OPENSSL_VERSION }}-static-v1
+
+      - name: Build OpenSSL static
+        if: steps.cache-openssl.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch ${{ env.OPENSSL_VERSION }} https://github.com/openssl/openssl.git /tmp/openssl-src
+          cd /tmp/openssl-src
+          ./config no-shared -fPIC --prefix=/tmp/openssl-install --openssldir=/etc/ssl
+          make -j$(nproc)
+          make install_sw
+
+      - name: Cache GOST engine static
+        id: cache-gost
+        uses: actions/cache@v4
+        with:
+          path: /tmp/gost-engine
+          key: gost-engine-${{ env.GOST_ENGINE_VERSION }}-static-v1
+
+      - name: Build GOST engine static
+        if: steps.cache-gost.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch ${{ env.GOST_ENGINE_VERSION }} --recursive https://github.com/gost-engine/engine.git /tmp/gost-engine
+          cd /tmp/gost-engine
+          sed -i 's/add_library(lib_gost_engine SHARED/add_library(lib_gost_engine STATIC/' CMakeLists.txt
+          sed -i '/install(TARGETS lib_gost_engine EXPORT/,/)/s/^/#disabled: /' CMakeLists.txt
+          mkdir build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+                -DOPENSSL_ROOT_DIR=/tmp/openssl-install ..
+          cmake --build . --target lib_gost_engine gost_core gost_err
+
+      - name: Create gost-engine.pc
+        run: |
+          cat > /tmp/gost-engine.pc << 'PCEOF'
+          prefix=/tmp/gost-engine
+          build_dir=${prefix}/build
+
+          Name: gost-engine
+          Description: Reference implementation of GOST crypto algorithms for OpenSSL
+          Version: 3.0.3
+          Cflags: -I${prefix}
+          Libs: ${build_dir}/libgost.a ${build_dir}/libgost_core.a ${build_dir}/libgost_err.a
+          PCEOF
+
+      - name: Run tests (openssl_static openssl_gost)
+        env:
+          PKG_CONFIG_PATH: /tmp/openssl-install/lib64/pkgconfig:/tmp
+          CGO_ENABLED: 1
+        run: |
+          go test -v -tags "openssl_static openssl_gost" ./...
+
+      - name: Verify no dynamic deps on openssl or gost
+        env:
+          PKG_CONFIG_PATH: /tmp/openssl-install/lib64/pkgconfig:/tmp
+          CGO_ENABLED: 1
+        run: |
+          go test -tags "openssl_static openssl_gost" -c -o /tmp/test-binary .
+          echo "=== ldd output ==="
+          ldd /tmp/test-binary
+          echo "=== checking for libssl/libcrypto/gost ==="
+          if ldd /tmp/test-binary | grep -Ei 'libssl|libcrypto|gost'; then
+            echo "FAIL: dynamic dependency on openssl or gost found"
+            exit 1
+          else
+            echo "OK: no dynamic dependency on openssl or gost"
+          fi

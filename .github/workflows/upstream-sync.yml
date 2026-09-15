@@ -1,0 +1,74 @@
+name: Check upstream release
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/prometheus/blackbox_exporter.git
+          git fetch upstream --tags
+      - name: Select latest stable upstream tag
+        id: upstream
+        run: |
+          latest=$(git tag -l | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+          current=$(cat .upstream-version)
+          echo "latest=${latest}" >> "${GITHUB_OUTPUT}"
+          echo "current=${current}" >> "${GITHUB_OUTPUT}"
+          [[ "${latest}" != "${current}" ]] || echo "unchanged=true" >> "${GITHUB_OUTPUT}"
+      - name: Merge upstream into update branch
+        if: steps.upstream.outputs.unchanged != 'true'
+        id: merge
+        env:
+          LATEST: ${{ steps.upstream.outputs.latest }}
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          branch="automation/upstream-${LATEST#v}"
+          git switch -C "${branch}"
+          if ! git merge --no-edit "${LATEST}"; then
+            git merge --abort
+            echo "conflict=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          printf '%s\n' "${LATEST}" > .upstream-version
+          git add .upstream-version
+          git commit -m "Track upstream ${LATEST}"
+          git push --force-with-lease origin "${branch}"
+          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+      - name: Open pull request
+        if: steps.merge.outputs.branch != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+          LATEST: ${{ steps.upstream.outputs.latest }}
+        run: |
+          if ! gh pr list --head "${BRANCH}" --state open --json number --jq 'length > 0' | grep -qx true; then
+            gh pr create \
+              --base "${{ github.event.repository.default_branch }}" \
+              --head "${BRANCH}" \
+              --title "Sync upstream ${LATEST}" \
+              --body "Automated merge of Prometheus blackbox_exporter ${LATEST}. Review conflicts, vendored prometheus/common, GOST patches and CI before merging."
+          fi
+      - name: Report merge conflict
+        if: steps.merge.outputs.conflict == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.upstream.outputs.latest }}
+        run: |
+          gh issue create \
+            --title "Manual upstream sync required for ${LATEST}" \
+            --body "The automated merge of Prometheus blackbox_exporter ${LATEST} has conflicts. Rebase the GOST changes manually and run both standard and GOST CI jobs."

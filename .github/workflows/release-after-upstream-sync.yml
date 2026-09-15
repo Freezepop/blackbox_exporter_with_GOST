@@ -1,0 +1,35 @@
+name: Release merged upstream sync
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'automation/upstream-')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0
+      - name: Tag GOST fork release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          upstream=$(cat .upstream-version)
+          tag="${upstream}-gost.1"
+          if git rev-parse "${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists"
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git tag -a "${tag}" -m "blackbox_exporter ${upstream#v} with automatic GOST TLS fallback"
+          git push origin "${tag}"
+          gh workflow run release-fork.yml --ref "${tag}" -f "version=${tag#v}"
