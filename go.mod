@@ -15,7 +15,7 @@ require (
 	github.com/prometheus/common v0.67.4
 	github.com/prometheus/exporter-toolkit v0.15.0
 	github.com/tarantool/go-openssl v1.4.2
-	go.yaml.in/yaml/v2 v2.4.3
+	go.yaml.in/yaml/v2 v2.4.4
 	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/net v0.47.0
 	google.golang.org/grpc v1.77.0
