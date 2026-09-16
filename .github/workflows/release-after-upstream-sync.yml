@@ -32,4 +32,3 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git tag -a "${tag}" -m "blackbox_exporter ${upstream#v} with automatic GOST TLS fallback"
           git push origin "${tag}"
-          gh workflow run release-fork.yml --ref "${tag}" -f "version=${tag#v}"

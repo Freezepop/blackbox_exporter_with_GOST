@@ -17,10 +17,13 @@ See [GOST support, builds and maintenance](docs/GOST.md) for architecture,
 supported platforms, trust-store setup, local builds, release automation and
 upstream synchronization.
 
-Fork releases contain the regular upstream-compatible platform matrix together
-with additional static GOST builds for Linux amd64 and arm64. A scheduled
-workflow prepares pull requests for new stable upstream releases; merging a
-validated sync pull request publishes the corresponding fork release.
+Fork releases contain GOST-enabled builds for Linux amd64 and arm64.
+These builds support regular TLS using Go's standard TLS stack and
+automatically retry compatible failed handshakes using the statically
+linked OpenSSL/GOST backend.
+
+The release does not publish regular upstream binaries. For platforms
+without GOST support, use the official Prometheus blackbox_exporter releases.
 
 ## Running this software
 
