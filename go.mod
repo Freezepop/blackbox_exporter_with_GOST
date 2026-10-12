@@ -16,7 +16,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.15.0
 	github.com/tarantool/go-openssl v1.4.2
 	go.yaml.in/yaml/v2 v2.4.3
-	go.yaml.in/yaml/v3 v3.0.4
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/net v0.59.0
 	google.golang.org/grpc v1.77.0
 )
@@ -44,7 +44,7 @@ require (
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.57.1
+	github.com/quic-go/quic-go v0.63.0
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
